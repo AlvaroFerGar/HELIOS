@@ -8,7 +8,7 @@ This is the final work I made for a class project. Basically, it's a web page th
 * The web is programmed in javascript inside HTML files.
 * The main library used to create the map is [three.js](https://threejs.org/). I take from it a bunch of code and some .png sprites.
 * The data of the stars is from the [HYG Database](http://www.astronexus.com/hyg)
-* The implementation of the function that converts the color index of a star to a RGB color is inspired in [the idea of melhosseiny](https://stackoverflow.com/questions/21977786/star-b-v-color-index-to-apparent-rgb-color), a Stackoverflow user.
+* The implementation of the function that converts the color index of a star to a RGB color(ColorIndex2RGB) is inspired in [the idea of melhosseiny](https://stackoverflow.com/questions/21977786/star-b-v-color-index-to-apparent-rgb-color), a Stackoverflow user.
 * Finally, I want to give credit to Michael Chang the creator of [100,000 stars](http://stars.chromeexperiments.com/) that was the main inspiration to make this project.  
 
 # How to navigate?
