@@ -1,0 +1,77 @@
+
+<html lang="es">
+
+<!-- Cabecera del documento HTML -->
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" type="text/css" href="estilos.css"/>
+</head>
+
+
+<!-- Cuerpo del documento HTML -->
+<body style="background-color:#000000;">
+
+<title>Trabajo Visualización: Álvaro Fernández García</title>
+
+<h1>
+	HELIOS
+</h1>
+
+<h3>
+	
+    Autor: Álvaro Fernández García<br>
+	Curso: 2017/2018<br>
+	Asignatura: Visualización de Datos<br>
+
+</h3>
+
+<div align="justify" >
+
+<p align="center">
+    <i>"Look again at that  <font color="#2158af">dot</font>. That's here. That's home. That's us.<br>
+    On it everyone you love, everyone you know, everyone you ever heard of, every human being who ever was,<br> lived out their lives".</i><br>
+    Carl Sagan
+</p>
+
+<p>
+   En ocasiones resulta complicado asimilar los tamaños, las distancias y las orientaciones empleadas en astronomía. Esta visualización se ha desarrollado para ayudar a comprender, mediante un mapa tridimensional, la posición y características de las estrellas más "cercanas" a nuestro Sol, eregido como centro de nuestro particular universo.
+</p>
+
+<p>
+	Los datos empleados para la visualización se toman de la <a href="http://www.astronexus.com/hyg">HYG Database</a>, combinación del Catálogo Hipparcos, el Catálogo Yale Bright Star y el Catálogo Gliese de estrellas cercanas. La base de datos, que puede descargarse <a href="ftp://sidads.colorado.edu/DATASETS/NOAA/G02135/seaice_analysis/">aquí</a>, incluye, entre otros, datos relativos al tamaño, posición y color de la estrella.
+	La programación de la escena se apoya en la librería <a href="https://threejs.org/">three.js</a>.
+</p>
+<p>
+	Se representa un sistema de ejes cartesianos, acotado en <i>pársecs</i> (1pc = 3.2616 años luz). La dirección de los ejes será:
+		<ul>
+		  <li><strong>X : </strong> En dirección del equinocio de primavera (época: 2000).</li>
+		  <li><strong>Y : </strong> En dirección ra=6h, de=0°.</li>
+		  <li><strong>Z : </strong> En dirección del polo norte celestial.</li>
+	</ul>
+</p>	
+<p>
+	Use el clic izquierdo del ratón para orbitar en torno a su posición, arrastre con el clic derecho para trasladarse en esa dirección y use la rueda para hacer zoom. Cada una de las estrellas del mapa puede seleccionarse con un doble clic. Al hacerlo, parecerá junto a ella un texto informativo y unas líneas granates de referencia posicional.<br> La barra superior de botones sirve para cambiar la configuración de la representación:
+	<ul>
+		  <li><strong>'Inicio'</strong> retornará a la presente página.</li>
+		  <li><strong>'Transporte a Sol'</strong> transportará a la posición inicial.</li>
+		  <li><strong>'Transporte a Estrella'</strong> transportará a la posición de la estrella previamente seleccionada con doble clic.</li>
+		  <li><strong>'Limpia'</strong> borra los ejes y el texto de la información seleccionada.</li>
+		  <li><strong>'Datos Estrella'</strong> permite configurar que datos aparecen en la estrella seleccionada.</li>
+		  <li><strong>'Constelaciones'</strong> permite destacar la constelación seleccionada.</li>
+		  <li><strong>'Buscador de Estrellas'</strong> destaca la estrella elegida y nos transporta hacia ella.</li>
+	</ul>
+</p>
+
+<p>
+	Un breve texto aparecerá sobre las herramientas de la interfaz recordando su funcionamiento. 
+</p>
+
+<h2>	
+	<br><a href="helios.html"><u>NAVEGAR</u></a>
+</h2>
+
+
+</div>
+
+</body>
+</html> 

@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+		<title>HELIOS</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background-color: #000000;
+				margin: 0px;
+				overflow: hidden;
+				font-family:Monospace;
+				font-size:13px;
+				text-align:center;
+				font-weight: bold;
+				text-align:center;
+			}
+			a {
+				color:#0078ff;
+			}
+			#info {
+				color:#fff;
+				position: absolute;
+				top: 0px;
+				width: 100%;
+				padding: 5px;
+			}
+		</style>
+ 
+
+<!-- BOTONERA SUPERIOR -->
+ <input type="button" title="Retorno a la página de inicio" value="Inicio" onclick="window.location.href='index.html'" />
+ <button title="Transporte instantáneo al Sol", onclick="ResetPosition()">Transporte a Sol</button>
+ <button title="Transporte instantáneo a la estrella seleccionada", onclick="StarPosition()">Transporte a Estrella</button>
+ <button title="Limpieza de los elementos en pantalla", onclick="BorraElementos()">Limpia</button>
+
+
+            
+<select id="starDataSelector" onchange="changeContent()" title="Selector de características a mostrar en las estrellas selecionadas">
+	<option value="" disabled selected=""> [Datos estrella]</option>
+    <option value="1">spect</option>
+    <option value="2">dist</option>
+    <option value="3">ra dec</option>
+    <option value="4">const</option>
+    <option value="5">mag</option>
+    <option value="6">lum</option>
+    <option value="7">vr</option>
+</select> 
+
+
+
+</div>
+
+</head>
+
+	<body>
+
+		<!-- CARGA DE LAS LIBRERIAS DE APOYO -->
+		<script src="js/three.js"></script>
+
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+		<script src="js/libs/dat.gui.min.js"></script>
+
+		<script src="js/controls/OrbitControls.js"></script>
+		<script src="js/controls/FlyControls.js"></script>
+
+		<script src="https://d3js.org/d3.v4.min.js"></script>
+
+
+		<!-- Propiedades de los shaders (empleados más adelante) -->
+		<script type="x-shader/x-vertex" id="vertexshader">
+			uniform float amplitude;
+			attribute float size;
+			attribute vec3 customColor;
+			varying vec3 vColor;
+			void main() 
+			{
+				vColor = customColor;
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+				gl_PointSize = size * ( 300.0 / -mvPosition.z );
+				gl_Position = projectionMatrix * mvPosition;
+			}
+		</script>
+
+		<script type="x-shader/x-fragment" id="fragmentshader">
+			uniform vec3 color;
+			uniform sampler2D texture;
+			varying vec3 vColor;
+			void main() 
+			{
+				gl_FragColor = vec4( color * vColor, 1.0 );
+				gl_FragColor = gl_FragColor * texture2D( texture, gl_PointCoord );
+			}
+		</script>
+
+<!--
+
+=========COMIENZO DEL CÓDIGO .JS====================================================================== 
+	
+							-->
+
+<script>	
+
+//Programación del selector de datos a mostrar en el texto
+var starDataSelected=[]
+var optionsNames=["","spect","dist","ra dec","const","mag","lum","vr"]
+
+
+function changeContent()
+{
+	var idClicked=document.getElementById('starDataSelector').value
+
+	if (ArrayContains(starDataSelected, idClicked))
+	{
+		document.getElementById('starDataSelector').options[idClicked].text = optionsNames[idClicked];
+
+		for(var i =0; i< starDataSelected.length; i++)
+		{
+		    if(starDataSelected[i] === idClicked)
+		    {
+		       starDataSelected.splice(i, 1);
+		    }
+		}
+	}
+	else
+	{
+	starDataSelected.push(idClicked);
+	document.getElementById('starDataSelector').options[idClicked].text = optionsNames[idClicked] + " ✓";	
+	}
+
+}
+
+
+
+if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+
+//Definicion de las variables globales
+
+var camera, scene, renderer, stats, material
+var controls;
+var mouseX = 0, mouseY = 0;
+var mouse = new THREE.Vector2();
+
+//Raycaster para detección de clicks en las partículas
+var raycaster = new THREE.Raycaster();
+// Umbral de detección
+raycaster.params.Points.threshold = 3;
+
+
+//Variables para el escalado
+var windowHalfX = window.innerWidth / 2;
+var windowHalfY = window.innerHeight / 2;
+
+//Lineas
+var line2;
+var lineOnCLick= new THREE.Line();
+var lineRefX= new THREE.Line();
+var lineRefY= new THREE.Line();
+var lineRefZ= new THREE.Line();
+
+
+//Nube de puntos y sus características
+var particles;
+
+var n_muestras= 10000;
+var positions_3d = new Array(n_muestras);
+var selectedStarPosition= new Array(3);
+
+var proper=[];
+var proper_names=[];
+var spect=[];
+var dist=[];
+var ra=[];
+var dec=[];
+var conste=[];
+var conste_names=[];
+var mag=[];
+var lum=[];
+var vr=[];
+
+//Booleano para la detección de drag
+var DragDetected;
+
+
+//Variables relacionadas con los selectores
+var selectorDatosTexto;
+var opcionesSelector;
+
+var BuscadorEstrellas;
+var opcionesBuscador;
+
+var selectorConstelaciones;
+var opcionesSelectorC;
+
+
+//Variables para la detección del doble click
+var dobleClick = false;
+var timeout;
+
+
+
+init();
+
+animate();
+
+
+
+
+
+//---------------------------------------------------------------------------------------------------------
+//FUNCIONES
+
+
+
+
+function init() {
+
+	
+d3.csv('hygdata_distord.csv',function(datos) //Lectura de los datos del csv
+{
+
+//Creación de la cámara
+camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 2, 20000 );
+camera.position.z = 10;
+
+//Creación de la escena
+scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2( 0x000000, 0.001 );
+
+
+//Variables para la nube de puntos
+var geometry = new THREE.BufferGeometry();
+var vertices = [];
+
+var sprite = new THREE.TextureLoader().load( 'textures/sprites/spark1.png' );
+
+
+
+var positions = new Float32Array( n_muestras * 3 );
+var colors = new Float32Array( n_muestras * 3 );
+var sizes = new Float32Array( n_muestras );
+var vertex = new THREE.Vector3();
+var color_i = new THREE.Color( 0xffffff );
+
+
+//--LECTURA DEL CSV--
+for ( var i = 0; i < n_muestras; i ++ )
+{
+
+		//POSICION
+
+	vertex.x = 10*datos[i]['x'];
+	vertex.y = 10*datos[i]['y'];
+	vertex.z = 10*datos[i]['z'];
+	positions_3d[i]=new Array (3);
+	positions_3d[i][0]=vertex.x;
+	positions_3d[i][1]=vertex.y;
+	positions_3d[i][2]=vertex.z;
+
+	vertex.toArray( positions, i * 3 );
+
+
+		//COLOR
+	var ci;//Lectura del índice de color BV
+	if(datos[i]['ci']==null)
+			ci = datos[0]['ci'];//Si no tiene color asignado se le asigna el del Sol
+	else
+			ci = datos[i]['ci'];	
+	
+	var colorRGB=[];
+	colorRGB=ColorIndex2RGB(ci);//Traducción a RGB
+	var colorHSL=[];
+	colorHSL=RGB2HSL(colorRGB[0],colorRGB[1],colorRGB[2]);//Traducción a HSL	
+	color_i.setHSL(colorHSL[0], colorHSL[1], colorHSL[2]);				
+
+	color_i.toArray( colors, i * 3 );
+
+
+
+		//TAMAÑO
+	if(datos[i]['absmag']<0)
+			sizes[i] = sizes[0];//Si no tiene tamaño asignado se le asigna el del Sol
+	else
+		sizes[i] = datos[i]['absmag'];
+	
+		//NOMBRE
+	var proper_i= datos[i]['proper'];
+	proper.push(proper_i);
+
+
+		//TIPO ESPECTRAL
+	var spect_i= datos[i]['spect'];
+	spect.push(spect_i);
+
+		//DISTANCIA
+	var dist_i=datos[i]['dist'];
+	dist.push(dist_i);
+
+	var ra_i= datos[i]['ra'];
+	ra.push(ra_i);
+	var dec_i= datos[i]['dec'];
+	dec.push(dec_i);
+	var const_i= datos[i]['con'];
+	conste.push(const_i);
+	var mag_i= datos[i]['mag'];
+	mag.push(mag_i);
+	var lum_i= datos[i]['lum'];
+	lum.push(lum_i);
+	var spect_i= datos[i]['spect'];
+	spect.push(spect_i);
+	var vr_i= datos[i]['rv'];
+	vr.push(vr_i);
+
+}
+//-----------
+
+
+
+//--NUBE DE PUNTOS--
+				
+//Generación de características geométricas de la nube de puntos
+geometry = new THREE.BufferGeometry();
+
+geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+geometry.addAttribute( 'customColor', new THREE.BufferAttribute( colors, 3 ) );
+geometry.addAttribute( 'size', new THREE.BufferAttribute( sizes, 1 ) );
+	
+
+//Generación de características estéticas de la nube de puntos	
+material = new THREE.ShaderMaterial(
+{
+	uniforms: {
+				amplitude: { value: 1.0 },
+				color:     { value: new THREE.Color( 0xffffff ) },
+				texture:   { value: sprite }
+			  },
+	vertexShader:   document.getElementById( 'vertexshader' ).textContent,
+	fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
+	blending:       THREE.NormalBlending,
+	depthTest:      false,
+	transparent:    true
+});
+ 
+//Inclusión de la nube de puntos
+particles = new THREE.Points( geometry, material );
+scene.add( particles );
+//-----------
+
+
+
+//--EJES DE REFERENCIA--
+
+
+//Material empleado para dibujar los ejes positivos y negativos
+var material_line_pos = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.75 } );
+var material_line_neg = new THREE.LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.1 } );
+
+
+for(var i=0; i<3; i++)//Dibujado de los ejes
+{
+	var eje_x=0, eje_y=0, eje_z=0;			
+	switch (i) 
+	{
+		case 0:  eje_x=10000;
+    		 	 break;
+		case 1:  eje_y=10000;
+				 break;
+		case 2:  eje_z=10000;
+    		 	 break;
+	}	
+
+	var center=new THREE.Vector3( 0, 0, 0);//Posicion del Sol
+
+	//Geometría de los ejes
+	var geometry_line_pos = new THREE.Geometry();
+	geometry_line_pos.vertices.push(new THREE.Vector3( eje_x, eje_y, eje_z) );
+	geometry_line_pos.vertices.push(center);
+	
+	var geometry_line_neg = new THREE.Geometry();
+	geometry_line_neg.vertices.push(new THREE.Vector3( -eje_x, -eje_y, -eje_z) );
+	geometry_line_neg.vertices.push(center);
+
+	//Creación e inclusión en la escena
+	eje_pos = new THREE.Line( geometry_line_pos, material_line_pos );
+	eje_neg = new THREE.Line( geometry_line_neg, material_line_neg );
+	eje_pos.name='ejes';
+	scene.add( eje_pos );
+	scene.add( eje_neg );
+
+	
+	for (var j=-1000; j<1000; j=j+10) //Dibujado de las graduaciones
+	{
+		var grad_x1=0, grad_y1=0, grad_z1=0;
+		var grad_x2=0, grad_y2=0, grad_z2=0;
+		var eje;
+		switch (i)
+		{
+    		case 0: grad_x1=j;
+    				grad_y1=0.5;
+    					
+					grad_x2=j;
+    				grad_y2=-0.5;
+
+    				eje='x';
+    				break;
+
+    		case 1: grad_y1=j;
+    				grad_x1=0.5;
+    					
+    				grad_y2=j;
+    				grad_x2=-0.5;
+    				eje='y';
+    				break;
+    		
+    		case 2: grad_z1=j;
+    				grad_x1=0.5;
+    					
+    				grad_z2=j;
+    				grad_x2=-0.5;
+    				eje='z';
+  				    break;
+      	}	
+			
+		//Geometría de las graduaciones
+		var geometry_grad = new THREE.Geometry();
+		geometry_grad.vertices.push(new THREE.Vector3( grad_x1, grad_y1, grad_z1) );
+		geometry_grad.vertices.push(new THREE.Vector3( grad_x2, grad_y2, grad_z2) );
+
+		//Creación e inclusión de las graduaciones
+		grad = new THREE.Line( geometry_grad, material_line_pos );
+		scene.add(grad);
+
+		if (j!=0)
+		{
+			var spritegrad= makeTextSprite(eje+':'+j/10+' pc',
+				{ fontsize: 70, backgroundColor: {r:255, g:100, b:100, a:1 } } );			
+				
+			//Creación e inclusión de las graduaciones	
+			spritegrad.position.set(grad_x1+0.5, grad_y1+0.5, grad_z1+0.5);
+						
+			spritegrad.name="ejes";
+			spritegrad.scale.set(1,0.5,1);				
+			
+			scene.add( spritegrad );
+		}
+
+	}
+}
+//-----------
+
+
+//--ÓRBITAS DE DECAPÁRSECS--   
+							
+for (var i=1; i<=10; i++)
+{
+	var segmentCount = 1000,
+    radius = 10*10*i,//Radio de 10 pársecs (1 decapársec)
+    geometry_cir = new THREE.Geometry();
+    material_cir = new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.075 }); 
+
+	for (var j = 0; j <= segmentCount; j++)
+	{
+	    var theta = (j / segmentCount) * Math.PI * 2;
+
+	    x = Math.cos(theta) * radius;
+	    y = 0;
+	    z = Math.sin(theta) * radius;
+
+	    geometry_cir.vertices.push(new THREE.Vector3(x, y, z));
+    }     
+
+	scene.add(new THREE.Line(geometry_cir, material_cir));
+}
+
+
+//--------
+
+//----------------CONSTELACIONES
+
+
+//Creación del array de nombres de constelaciones
+for(var i=0; i<conste.length;i++)
+{
+	if (ArrayContains(conste_names, conste[i])==0)
+	{
+		conste_names.push(conste[i]);
+	}
+}
+conste_names.sort();
+conste_names[0]="[Constelaciones]"
+
+// Creación del selector de constelaciones a destacar
+selectorConstelaciones = d3.select('body')
+			.append('select')
+			.on('change', function(){DibujaConstelaciones(selectorConstelaciones.property('selectedIndex'))})
+			.attr("title",'Selector de constelación a destacar')
+		
+
+opcionesSelectorC = selectorConstelaciones			
+			.selectAll('option').data(conste_names)
+			.enter()
+			.append('option')
+			.text(function(d){return d})
+
+//---------------BUSCADOR DE ESTRELLAS
+
+//Creación del array de nombres de constelaciones
+for(var i=0; i<proper.length;i++)
+{
+	if (ArrayContains(proper_names, proper[i])==0)
+	{
+		proper_names.push(proper[i]);
+	}
+}
+proper_names.sort();
+proper_names[0]="[Buscador de Estrellas]"
+
+// Creación del selector de constelaciones a destacar
+BuscadorEstrellas = d3.select('body')
+			.append('select')
+			.on('change', function(){BuscaEstrella(BuscadorEstrellas.property('selectedIndex'))})
+			.attr("title",'Selector de estrellas con nombre propio')
+		
+
+opcionesBuscador = BuscadorEstrellas			
+			.selectAll('option').data(proper_names)
+			.enter()
+			.append('option')
+			.text(function(d){return d})
+
+
+
+//--RENDERER--
+renderer = new THREE.WebGLRenderer();
+renderer.setPixelRatio( window.devicePixelRatio );
+renderer.setSize( window.innerWidth, window.innerHeight );
+document.body.appendChild( renderer.domElement );
+//--------
+
+
+//--CONTROLS--
+controls = new THREE.OrbitControls( camera, renderer.domElement );
+controls.enableDamping = true; 
+controls.dampingFactor = 0.75;
+controls.screenSpacePanning = true;
+controls.minDistance = 5;
+controls.maxDistance = 10000
+
+
+//--------
+
+
+//--FPS--
+stats = new Stats();
+document.body.appendChild( stats.dom );
+//--------
+
+
+//--DETECCIÓN DE EVENTOS--
+
+var DragFlag=0;
+DragDetected = 0;
+
+window.addEventListener("mousedown", function()	{ DragFlag = 0; }, false);
+
+window.addEventListener("mousemove", function() { DragFlag = 1; }, false);
+
+window.addEventListener("mouseup", function(){
+    if(DragFlag === 0)
+    {
+    	DragDetected=0;        
+    }
+    else if(DragFlag === 1)
+    {
+    	DragDetected=1;        
+    }
+												}, false);
+
+
+window.addEventListener( 'resize', onWindowResize, false );
+window.addEventListener( 'click', onDobleClick, false );
+//--------
+
+
+})
+
+}
+
+function animate()
+{
+
+requestAnimationFrame( animate );
+render();
+stats.update();
+
+}
+
+
+
+//=====================================================================================================================================
+//=====================================================================================================================================
+//=====================================================================================================================================
+
+//FUNCIONES AUXILIARES
+
+
+
+//Función que renderiza la escena
+function render() 
+{
+	renderer.render( scene, camera );
+}
+
+
+//Función para el botón de retorno al Sol
+function ResetPosition()
+{
+	controls.reset();
+}
+
+//Función para destacar la constelación señalada
+function DibujaConstelaciones(idConst)
+{
+
+
+while(scene.getObjectByName( "constelacion" )!=null)
+	scene.remove(scene.getObjectByName( "constelacion" ));
+
+if (idConst!=0)
+{
+	var idStarsSelectedConste=[];
+
+	for(i=0; i<conste.length;i++)
+	{
+		if(conste[i]==conste_names[idConst]) idStarsSelectedConste.push(i);
+	}
+
+	for (var i=0; i<idStarsSelectedConste.length; i++)
+	{
+		var segmentCount = 10,
+	    radius = 2.5;
+	    var geometry_const_cir = new THREE.Geometry();
+	    var material_const_cir = new THREE.LineBasicMaterial({ color: "#4ec367", transparent: true, opacity: 1, lineWidth:50 }); 
+
+		for (var j = 0; j <= segmentCount; j++)
+		{
+		    var theta = (j / segmentCount) * Math.PI * 2;
+
+		    x = 0                         +positions_3d[idStarsSelectedConste[i]][0];
+		    y = Math.cos(theta) * radius  +positions_3d[idStarsSelectedConste[i]][1];
+		    z = Math.sin(theta) * radius  +positions_3d[idStarsSelectedConste[i]][2];
+
+		    geometry_const_cir.vertices.push(new THREE.Vector3(x, y, z));
+	    }     
+
+		var aux_lineConst=new THREE.Line(geometry_const_cir, material_const_cir);
+		aux_lineConst.name="constelacion"
+		scene.add(aux_lineConst);
+	}
+
+}
+}
+
+//Función para destacar la estrella buscada y trasladarse a ella
+function BuscaEstrella(idStarName)
+{
+
+
+while(scene.getObjectByName( "EstrellaBuscada" )!=null)
+	scene.remove(scene.getObjectByName( "EstrellaBuscada" ));
+
+if (idStarName!=0)
+{
+	var idSearchedStar;
+
+	for(i=0; i<proper.length;i++)
+	{
+		if(proper[i]==proper_names[idStarName]) idSearchedStar=i;
+	}
+
+	var segmentCount = 10,
+    radius = 2.5;
+    var geometry_star = new THREE.Geometry();
+    var material_star = new THREE.LineBasicMaterial({ color: "#9900cc", transparent: true, opacity: 1, lineWidth:50 }); 
+
+	for (var j = 0; j <= segmentCount; j++)
+	{
+	    var theta = (j / segmentCount) * Math.PI * 2;
+
+	    x = Math.sin(theta) * radius  +positions_3d[idSearchedStar][0];
+	    y = Math.cos(theta) * radius  +positions_3d[idSearchedStar][1];
+	    z = 0						  +positions_3d[idSearchedStar][2];
+
+	    geometry_star.vertices.push(new THREE.Vector3(x, y, z));
+    }     
+
+	var aux_lineStar=new THREE.Line(geometry_star, material_star);
+	aux_lineStar.name="EstrellaBuscada"
+	scene.add(aux_lineStar);
+
+	controls.target.x=positions_3d[idSearchedStar][0]
+	controls.target.y=positions_3d[idSearchedStar][1]
+	controls.target.z=positions_3d[idSearchedStar][2]
+
+	camera.position.x = positions_3d[idSearchedStar][0];
+	camera.position.y = positions_3d[idSearchedStar][1];
+	camera.position.z = positions_3d[idSearchedStar][2]+10;
+	
+
+}
+}
+
+//Función para el borrado de elementos auxiliares
+function BorraElementos()
+{
+
+while(scene.getObjectByName( "constelacion" )!=null)
+	scene.remove(scene.getObjectByName( "constelacion" ));
+
+scene.remove(scene.getObjectByName( "lineaEstrellaSol" ))
+
+scene.remove(scene.getObjectByName( "refX" ));
+scene.remove(scene.getObjectByName( "refY" ));
+scene.remove(scene.getObjectByName( "refZ" ));
+
+for (var i=0; i<10; i++)
+	scene.remove(scene.getObjectByName( "text"+i ))
+
+}
+
+
+
+//Función para el transporte automático a la posición de la estrella seleccionada
+function StarPosition()
+{
+	
+	controls.reset();
+
+	if( (selectedStarPosition[0]==null && selectedStarPosition[1]==null && selectedStarPosition[2]==null)
+		 ==false)
+	{
+	controls.target.x=selectedStarPosition[0]
+	controls.target.y=selectedStarPosition[1]
+	controls.target.z=selectedStarPosition[2]
+
+	camera.position.x = selectedStarPosition[0];
+	camera.position.y = selectedStarPosition[1];
+	camera.position.z = selectedStarPosition[2]+10;
+	}
+}
+
+
+
+//Funcion que se ejecuta el detectar el click
+function onDobleClick (e)
+{
+    
+ 	if(timeout)
+ 	{
+        clearTimeout(timeout);
+    }
+
+
+    timeout = setTimeout(function () {dobleClick = false;}, 200);
+
+
+    e.preventDefault();
+    //Se guarda la posición clickada
+    mouse.x =  ( e.clientX / renderer.domElement.width  ) * 2 - 1;
+    mouse.y = -( e.clientY / renderer.domElement.height ) * 2 + 1;
+
+    //Se ejecuta el raycaster y se guardan las intersecciones
+    raycaster.setFromCamera( mouse, camera );
+    var intersects = raycaster.intersectObject( particles, true );
+    
+    if (intersects.length > 0 & DragDetected==0 & dobleClick==true)//si se han detectado intersecciones y el click no fue un drag 
+    {
+
+        intersects = intersects.sort( function( a, b ) { return a.distanceToRay - b.distanceToRay; });
+        var particle = intersects[0];
+        var index = intersects[0].index; //Índice de la estrella clickada
+        
+        //-----------------------------------Línea que une a la estrella seleccionada con el Sol        
+ 	    scene.remove(scene.getObjectByName( "lineaEstrellaSol" ))
+
+		
+		var material_lineOnClick = new THREE.LineBasicMaterial( { color: 0x8b0000 , transparent: true, opacity: 0.8} );
+
+		var geometry_lineOnClick = new THREE.Geometry();
+		geometry_lineOnClick.vertices.push(new THREE.Vector3( positions_3d[0][0], positions_3d[0][1], positions_3d[0][2]) );
+		geometry_lineOnClick.vertices.push(new THREE.Vector3( positions_3d[index][0], positions_3d[index][1], positions_3d[index][2]) );
+
+		lineOnClick = new THREE.Line( geometry_lineOnClick, material_lineOnClick );
+		lineOnClick.name="lineaEstrellaSol";
+
+
+		scene.add( lineOnClick );
+
+
+
+	    //-----------------------------------Línea que da la referencia respecto al eje Y
+	    scene.remove(scene.getObjectByName( "refY" ));
+
+		
+		var material_lineRef = new THREE.LineBasicMaterial( { color: 0x8b0000 , transparent: true, opacity: 0.2} );
+
+		var geometry_lineRefY = new THREE.Geometry();
+		geometry_lineRefY.vertices.push(new THREE.Vector3( positions_3d[index][0], 0, positions_3d[index][2]) );
+		geometry_lineRefY.vertices.push(new THREE.Vector3( positions_3d[index][0], positions_3d[index][1], positions_3d[index][2]) );
+
+		lineRefY = new THREE.Line( geometry_lineRefY, material_lineRef );
+		lineRefY.name="refY";
+
+		scene.add( lineRefY );
+
+
+
+		//-----------------------------------Línea que da la referencia respecto al eje X
+	    scene.remove(scene.getObjectByName( "refX" ))
+
+		
+		var geometry_lineRefX = new THREE.Geometry();
+		geometry_lineRefX.vertices.push(new THREE.Vector3( positions_3d[index][0],0, positions_3d[index][2]) );
+		geometry_lineRefX.vertices.push(new THREE.Vector3( positions_3d[index][0], 0, 0) );
+
+		lineRefX = new THREE.Line( geometry_lineRefX, material_lineRef );
+		lineRefX.name="refX";
+
+		scene.add( lineRefX );
+
+
+
+		//-----------------------------------Línea que da la referencia respecto al eje Z
+	    scene.remove(scene.getObjectByName( "refZ" ))
+
+		
+		var geometry_lineRefZ = new THREE.Geometry();
+		geometry_lineRefZ.vertices.push(new THREE.Vector3( positions_3d[index][0],0, positions_3d[index][2]) );
+		geometry_lineRefZ.vertices.push(new THREE.Vector3( 0, 0, positions_3d[index][2]) );
+
+		lineRefZ = new THREE.Line( geometry_lineRefZ, material_lineRef );
+		lineRefZ.name="refZ";
+
+		scene.add( lineRefZ );
+
+
+		//-----------------------------------Textos informativos
+		scene.remove(scene.getObjectByName( "textProper" ))
+		
+		for (var i=0; i<10; i++)
+			scene.remove(scene.getObjectByName( "text"+i ))
+		
+
+		var sprite_Proper = makeTextSprite( proper[index], 
+		{ fontsize: 18, backgroundColor: {r:255, g:100, b:100, a:1 } } );
+		sprite_Proper.position.set(positions_3d[index][0],positions_3d[index][1]+0.25,positions_3d[index][2]);
+		sprite_Proper.name="textProper";
+		scene.add(sprite_Proper)
+				
+
+		var message_array=[];
+		if (ArrayContains(starDataSelected, 1)) message_array.push(["Spect: "+spect[index]])
+		if (ArrayContains(starDataSelected, 2)) message_array.push(["Distancia: "+parseFloat(dist[index]).toFixed(6)+" pc"])
+		if (ArrayContains(starDataSelected, 3)) message_array.push(["ra: "+ parseFloat(ra[index]).toFixed(6)+" dec: "+parseFloat(dec[index]).toFixed(6)])
+		if (ArrayContains(starDataSelected, 4)) message_array.push(["Constelación: "+ conste[index]])
+		if (ArrayContains(starDataSelected, 5)) message_array.push(["Magnitud: "+ parseFloat(mag[index]).toFixed(6)])
+		if (ArrayContains(starDataSelected, 6)) message_array.push(["Luminosidad: "+parseFloat(lum[index]).toFixed(6)+" L☉"])
+		if (ArrayContains(starDataSelected, 7) && parseFloat(vr[index])!=0.0 ) message_array.push(["Radial v: "+parseFloat(vr[index]).toFixed(3)+"km/s"])	
+		
+		
+		for (var i=0; i<message_array.length;i++)
+		{
+			var sprite= makeTextSprite(message_array[i],
+			{ fontsize: 18, backgroundColor: {r:255, g:100, b:100, a:1 } } );			
+			
+			
+			sprite.position.set(positions_3d[index][0],positions_3d[index][1]-1-i,positions_3d[index][2]);
+						
+			sprite.name="text"+i;				
+			
+			scene.add( sprite );
+		}
+
+
+		selectedStarPosition=[positions_3d[index][0], positions_3d[index][1], positions_3d[index][2]];
+    }
+    dobleClick = true;
+}
+
+
+
+//Funcion traducir texto a texturas canvas
+function makeTextSprite( message, parameters )
+{
+	if ( parameters === undefined ) parameters = {};
+
+	var fontface = parameters.hasOwnProperty("fontface") ? 
+	parameters["fontface"] : "Arial";
+
+	var fontsize = parameters.hasOwnProperty("fontsize") ? 
+	parameters["fontsize"] : 18;
+
+	var backgroundColor = parameters.hasOwnProperty("backgroundColor") ?
+	parameters["backgroundColor"] : { r:255, g:255, b:255, a:0.0 };
+
+	
+	var canvas = document.createElement('canvas');
+
+
+	var context = canvas.getContext('2d');
+	context.font = "Bold " + fontsize + "px " + fontface;
+
+	
+
+	// get size data (height depends only on font size)
+	var metrics = context.measureText( message )*1.4;
+	var textWidth = metrics.width;
+
+	
+
+	context.fillStyle   = "rgba(" + backgroundColor.r + "," + 								backgroundColor.g + ","
+						  + backgroundColor.b + "," + backgroundColor.a + ")";
+
+	drawRect(context, 0, 0, textWidth, fontsize*1.4);
+
+
+	context.fillStyle = "rgba(255, 255, 255, 0.5)";
+
+	context.fillText( message, 0, fontsize);
+
+	var texture = new THREE.Texture(canvas) 
+	texture.needsUpdate = true;
+
+	texture.minFilter = THREE.LinearFilter
+
+
+	var spriteMaterial = new THREE.SpriteMaterial( 
+	{ map: texture, useScreenCoordinates: false} );
+	var sprite = new THREE.Sprite( spriteMaterial );
+	sprite.scale.set(10,5,1);
+
+	return sprite;	
+}
+
+
+
+// Función para el dibujado de rectángulos de sprite
+function drawRect(ctx, x, y, w, h) 
+{
+	ctx.beginPath();
+	ctx.moveTo(x, y);
+	ctx.lineTo(x+w, y);
+	ctx.lineTo(x+w, y+h);
+	ctx.lineTo(x, y+h);
+	ctx.lineTo(x, y);
+	ctx.closePath();
+	ctx.fill();	 
+}
+
+
+
+//Funcion que escala la ventana 
+function onWindowResize()
+{
+	windowHalfX = window.innerWidth / 2;
+	windowHalfY = window.innerHeight / 2;
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize( window.innerWidth, window.innerHeight );
+}
+
+
+
+//Función que devuelve un booleano si contiene el valor indicado
+function ArrayContains(array, number)
+{
+	for (var i = 0; i < array.length; i++)
+	{
+	    if (array[i] == number) {return true}
+	}
+
+	return false
+}
+
+
+//Función para calcular el color RGB de la estrella a partir de su ci
+function ColorIndex2RGB(BV_ci) 
+{
+/*Fuente: 
+		  StackOverFlow... https://stackoverflow.com/questions/21977786/star-b-v-color-index-to-apparent-rgb-color
+		  Código.......... http://jsfiddle.net/AkjDw/2/                                                        */
+	
+
+	//Las estrellas más calientes tienen un bajo BV_ci y son azuladas
+	//Las estrellas menos calientes tienen un alto BV_ci y son anarajandas
+
+	//Esta temperatura(K) puede aproximarse por la siguiente formula
+
+	var T = 4600 * ((1 / ((0.92 * BV_ci) + 1.7)) +(1 / ((0.92 * BV_ci) + 0.62)) )
+	//console.log('#'+T)
+
+
+	//Conocida una aproximación a la temperatura se puede calcular las coordenadas en el lugar geométrico de Planck si modelamos la estella como un cuerpo negro ----> https://en.wikipedia.org/wiki/Planckian_locus
+	
+	var x, y = 0;
+
+	//Coordenada x
+	if (T >= 1667 & T <= 4000) 
+	{
+		x = ((-0.2661239 * Math.pow(10,9)) / Math.pow(T,3)) + ((-0.2343580 * Math.pow(10,6)) / Math.pow(T,2)) + ((0.8776956 * Math.pow(10,3)) / T) + 0.179910
+	}
+	else if (T > 4000)
+	{
+		x = ((-3.0258469 * Math.pow(10,9)) / Math.pow(T,3)) + ((2.1070379 * Math.pow(10,6)) / Math.pow(T,2)) + ((0.2226347 * Math.pow(10,3)) / T) + 0.240390
+	}
+
+	//Coordenada y
+	if (T >= 1667 & T <= 2222)
+	{
+		y = -1.1063814 * Math.pow(x,3) - 1.34811020 * Math.pow(x,2) + 2.18555832 * x - 0.20219683
+	}
+	else if (T > 2222 & T <= 4000)
+	{
+    	y = -0.9549476 * Math.pow(x,3) - 1.37418593 * Math.pow(x,2) + 2.09137015 * x - 0.16748867
+	} 
+	else if (T > 4000)
+	{
+    	y = 3.0817580 * Math.pow(x,3) - 5.87338670 * Math.pow(x,2) + 3.75112997 * x - 0.37001483
+	}
+
+
+  //Estas coordenadas x e y pueden trasladarse a coordenadas X, Y, Z del espacio de color 1931 ----> https://es.wikipedia.org/wiki/Espacio_de_color_CIE_1931
+
+  //En este modelo: 
+  					//X es una mezcla tendiente a la curva de sensibilidad del rojo al verde (conos L y M)			  
+  					//Y significa luminosidad (UNIFICADA PORQUE LUMINOSIDAD SE MODIFICA DE OTRA MANERA)
+  					//Z es aproximadamente igual al estímulo de azul (conos S), y 
+
+  var Y = 1.0
+  var X = (y == 0)? 0 : (x * Y) / y
+  var Z = (y == 0)? 0 : ((1 - x - y) * Y) / y
+
+  //XYZ to rgb
+  /*var r = 0.41847 * X - 0.15866 * Y - 0.082835 * Z
+  var g = -0.091169 * X + 0.25243 * Y + 0.015708 * Z
+  var b = 0.00092090 * X - 0.0025498 * Y + 0.17860 * Z*/
+
+  //XYZ to rgb
+  var r = 3.2406 * X - 1.5372 * Y - 0.4986 * Z
+  var g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z
+  var b = 0.0557 * X - 0.2040 * Y + 1.0570 * Z
+
+  //linear RGB to sRGB
+  var R = (r <= 0.0031308)? 12.92*r : 1.055*Math.pow(r,1/0.5)-0.055
+  var G = (g <= 0.0031308)? 12.92*g : 1.055*Math.pow(g,1/0.5)-0.055
+  var B = (b <= 0.0031308)? 12.92*b : 1.055*Math.pow(b,1/0.5)-0.055
+
+ 
+  R=R*255;
+  G=G*255;
+  B=B*255;
+
+  if (R >255){ R=255;}
+  else if (R < 0){R=0;}
+
+  if (G >255){G=255;}
+  else if (G < 0){G=0;}
+
+  if (B >255){B=255;}
+  else if (B < 0){B=0;}
+
+  return [Math.round(R),Math.round(G),Math.round(B)]
+}
+
+
+
+//Función que pasa de RGB a HSL
+function RGB2HSL(r, g, b) 
+{
+  	r /= 255, g /= 255, b /= 255;
+
+	var max = Math.max(r, g, b);
+	var min = Math.min(r, g, b);
+	var h, s, l = (max + min) / 2;
+
+	if (max == min) {h = s = 0;}
+	else
+	{
+	    var d = max - min;
+	    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+	    switch (max) 
+		    {
+		      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+		      case g: h = (b - r) / d + 2; break;
+		      case b: h = (r - g) / d + 4; break;
+		    }
+
+	    h /= 6;
+	}
+
+	return [ h, s, l ];
+}
+
+
+
+</script>
+</body>
+</html>
