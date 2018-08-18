@@ -3,6 +3,8 @@ A simple three.js visualization of the nearest stars to our sun
 
 This is the final work I made for a class project. Basically, it's a web page that loads a 3D navigable map of the nearest stars to the Sun. The goal wasn't to create the most precise visualization. I simply want to test the potential of three.js and improve my skills with javascript (and obviously to pass the subject).
 
+If you are not interested in the code and you only want to have a look at the webpage without downloading anything you can do it [here!](https://alvarofergar.github.io/)
+
 # Some references
 
 * The web is programmed in javascript inside HTML files.
